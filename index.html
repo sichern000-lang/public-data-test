@@ -155,8 +155,11 @@ function normalize(items){
   const num = k => !isNaN(Number(String(items[0][k]).replace(/,/g,"")));
   const period = keys.find(k => /년월|기준|일자|date|ym|연월|연도|년도|year|월/i.test(k));
   const count = keys.find(k => /관람|방문|입장|count|visit/i.test(k)) || keys.find(k => num(k) && k !== period);
-  const name = keys.find(k => /관광지|명칭|시설|장소|name|site/i.test(k) && k !== period);
   if (!count || !period) throw new Error("필드를 감지하지 못했습니다. 응답 필드: " + keys.join(", "));
+  const isText = k => isNaN(Number(String(items[0][k]).replace(/,/g,"")));
+  const name = keys.find(k => /관광지|명칭|시설|장소|명$|name|site|spot|place/i.test(k) && k !== period && k !== count)
+    || keys.find(k => k !== period && k !== count && isText(k) && !/일|날짜|date|비고|remark/i.test(k));
+  window.__fields = { name, period, count, keys };
   return items.map(r => ({
     site: name ? String(r[name]) : "전체",
     period: String(r[period]),
@@ -171,7 +174,8 @@ async function load(){
     const text = await res.text();
     if (!res.ok) throw new Error("HTTP " + res.status + " " + text.slice(0,200));
     rows = normalize(extractItems(text));
-    setStatus(`${rows.length}건 로드 완료`);
+    const f = window.__fields;
+    setStatus(`${rows.length}건 로드 완료 · 관광지명: ${f.name || "감지 실패"} / 기간: ${f.period} / 관람객: ${f.count}\n응답 필드: ${f.keys.join(", ")}`);
     render();
   } catch(e) { setStatus("실패: " + e.message, true); }
 }
