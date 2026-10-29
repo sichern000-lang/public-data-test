@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>서귀포 관광지 관람객 추이</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#fff; --text:#0d0d0d; --sub:#6b6b6b; --yellow:#fff566; --black:#0a0a0a; --chip:#ececec; --line:#ececec; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:Inter,"Noto Sans KR",sans-serif; }
+  .wrap { max-width:1080px; margin:0 auto; padding:0 16px; }
+  nav { display:flex; align-items:center; justify-content:space-between; padding:20px 0; font-size:13px; }
+  .logo { font-weight:600; display:flex; align-items:center; gap:8px; font-size:16px; }
+  .logo i { width:22px; height:22px; background:var(--black); border-radius:6px; display:inline-block; }
+  nav .links { display:flex; gap:24px; color:#333; }
+  .pill { display:inline-flex; align-items:center; gap:10px; border-radius:999px; padding:6px 6px 6px 16px; background:var(--yellow); font-size:13px; font-weight:500; border:none; cursor:pointer; color:var(--text); font-family:inherit; }
+  .pill .arr { width:26px; height:26px; border-radius:50%; background:#fff; display:grid; place-items:center; font-size:12px; }
+  .pill.dark { background:var(--black); color:#fff; } .pill.dark .arr { background:#fff; color:#000; }
+  .tag { display:inline-block; background:var(--chip); border-radius:999px; padding:5px 12px; font-size:11px; margin-bottom:18px; }
+  .hero { display:grid; grid-template-columns:1fr 1.05fr; gap:28px; align-items:stretch; margin-bottom:56px; }
+  .hero .l { display:flex; flex-direction:column; justify-content:center; padding:24px 0; }
+  h1 { font-size:clamp(34px,5vw,52px); line-height:1.12; font-weight:500; margin:0 0 18px; letter-spacing:-1px; }
+  .hero p { color:var(--sub); font-size:13px; line-height:1.7; max-width:420px; margin:0 0 22px; }
+  .panel { border-radius:16px; position:relative; min-height:420px; overflow:hidden; background:linear-gradient(160deg,#9ed8ff 0%,#4aa3df 45%,#1c6aa5 100%); }
+  .panel::before { content:""; position:absolute; inset:auto -10% -18% -10%; height:55%; background:radial-gradient(ellipse at 50% 100%,#2f7d4b 0 55%,transparent 56%); }
+  .panel .chip { position:absolute; background:var(--black); color:#fff; border-radius:999px; padding:6px 16px; font-size:12px; font-weight:500; }
+  .panel .big { position:absolute; left:24px; bottom:26px; color:#fff; z-index:1; }
+  .panel .big b { font-size:44px; font-weight:600; letter-spacing:-1px; display:block; }
+  .panel .big span { font-size:12px; opacity:.9; }
+  .yellow { background:var(--yellow); border-radius:16px; padding:28px; }
+  .black { background:var(--black); color:#fff; border-radius:16px; padding:24px; }
+  h2 { font-size:clamp(24px,3vw,32px); font-weight:500; line-height:1.2; margin:0 0 14px; letter-spacing:-.5px; }
+  .sub { font-size:12px; color:#555; line-height:1.6; margin:0; }
+  .grid2 { display:grid; grid-template-columns:1fr 1.25fr; gap:14px; margin-top:14px; }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); text-align:center; gap:8px; margin-top:26px; }
+  .stats b { display:block; font-size:clamp(20px,3vw,32px); font-weight:500; }
+  .stats span { font-size:11px; color:#555; }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+  select { font:inherit; font-size:13px; padding:8px 14px; border-radius:999px; border:1px solid #00000020; background:#fff; }
+  .chart-box { position:relative; height:320px; background:#fff; border-radius:12px; padding:14px; }
+  .sec { margin-top:14px; }
+  .card { border:1px solid var(--line); border-radius:16px; padding:22px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { padding:9px 6px; border-bottom:1px solid var(--line); text-align:right; }
+  th:first-child, td:first-child { text-align:left; }
+  .msg { font-size:12px; color:var(--sub); margin:14px 0 0; white-space:pre-wrap; }
+  .err { color:#d92d20; }
+  .trust { text-align:center; font-size:12px; color:#444; margin:0 0 28px; }
+  footer { text-align:center; font-size:11px; color:var(--sub); padding:36px 0; }
+  .tags { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .tags span { background:#fff; color:#000; border-radius:999px; padding:6px 14px; font-size:12px; }
+  @media (max-width:760px){ .hero,.grid2{grid-template-columns:1fr;} nav .links{display:none;} .panel{min-height:300px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <div class="logo"><i></i>Seogwipo Visit</div>
+    <div class="links"><a>Home</a><a>Trend</a><a>Ranking</a><a>Data</a></div>
+    <button class="pill" onclick="document.getElementById('trend').scrollIntoView({behavior:'smooth'})">추이 보기 <span class="arr">↗</span></button>
+  </nav>
+
+  <section class="hero">
+    <div class="l">
+      <span class="tag">제주특별자치도 서귀포시 직영관광지</span>
+      <h1>관람객 데이터로<br>읽는 서귀포,<br>우리가 사랑한 여행지.</h1>
+      <p>공공데이터포털의 직영관광지 관람객수 추이를 불러와 관광지별 · 기간별 흐름을 한눈에 보여줍니다.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="pill" id="load">데이터 불러오기 <span class="arr">↗</span></button>
+        <button class="pill dark" id="demo">샘플 보기 <span class="arr">↗</span></button>
+      </div>
+      <div class="msg" id="status"></div>
+    </div>
+    <div class="panel">
+      <span class="chip" style="top:90px;left:24px">Nature</span>
+      <span class="chip" style="top:140px;right:24px">Culture</span>
+      <span class="chip" style="top:250px;left:40px">Healing</span>
+      <div class="big"><b id="hTotal">—</b><span id="hLabel">누적 관람객수</span></div>
+    </div>
+  </section>
+
+  <div id="result" style="display:none">
+    <p class="trust" id="trust"></p>
+
+    <section class="yellow" id="trend">
+      <span class="tag" style="background:#fff">Trend</span>
+      <h2>기간별 관람객 추이</h2>
+      <div class="controls">
+        <select id="site"></select>
+        <select id="type"><option value="line">꺾은선</option><option value="bar">막대</option></select>
+      </div>
+      <div class="chart-box"><canvas id="chart"></canvas></div>
+    </section>
+
+    <div class="grid2">
+      <div class="black">
+        <h2 style="font-size:20px">가장 사랑받은 순간들</h2>
+        <p class="sub" style="color:#bbb">최대 관람 기간과 최근 증감을 확인하세요.</p>
+        <div class="tags"><span id="kMax">-</span><span id="kDelta">-</span></div>
+      </div>
+      <div class="yellow">
+        <h2>한눈에 보는 하이라이트</h2>
+        <div class="stats">
+          <div><b id="kTotal">-</b><span>합계</span></div>
+          <div><b id="kAvg">-</b><span>기간 평균</span></div>
+          <div><b id="kSites">-</b><span>관광지 수</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid2 sec">
+      <div class="card"><h2 style="font-size:20px">기간별 표</h2>
+        <table><thead><tr><th>기간</th><th>관람객수</th></tr></thead><tbody id="tbody"></tbody></table></div>
+      <div class="card"><h2 style="font-size:20px">관광지별 합계 순위</h2>
+        <div style="position:relative;height:360px"><canvas id="rank"></canvas></div></div>
+    </div>
+  </div>
+  <footer>데이터 출처: 공공데이터포털 · 제주특별자치도 서귀포시_직영관광지 관람객수 추이</footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => Number(n).toLocaleString("ko-KR");
+let rows = [], chart, rankChart;
+const COLORS = { line:"#0a0a0a", fill:"rgba(10,10,10,.12)", rank:"#0a0a0a" };
+
+function setStatus(t, err){ $("status").textContent = t; $("status").className = "msg" + (err ? " err" : ""); }
+
+function extractItems(text){
+  try {
+    const j = JSON.parse(text);
+    if (Array.isArray(j.data)) return j.data;
+    const items = j?.response?.body?.items;
+    if (items) { const it = items.item ?? items; return Array.isArray(it) ? it : [it]; }
+    const f = findArray(j); if (f) return f;
+  } catch(e) {}
+  const doc = new DOMParser().parseFromString(text, "text/xml");
+  return [...doc.querySelectorAll("item, row")].map(n => Object.fromEntries([...n.children].map(c => [c.tagName, c.textContent])));
+}
+function findArray(o){
+  if (Array.isArray(o) && o.length && typeof o[0] === "object") return o;
+  if (o && typeof o === "object") for (const k in o){ const r = findArray(o[k]); if (r) return r; }
+  return null;
+}
+
+function normalize(items){
+  if (!items.length) throw new Error("응답에 데이터가 없습니다.");
+  const keys = Object.keys(items[0]);
+  const num = k => !isNaN(Number(String(items[0][k]).replace(/,/g,"")));
+  const period = keys.find(k => /년월|기준|일자|date|ym|연월|연도|년도|year|월/i.test(k));
+  const count = keys.find(k => /관람|방문|입장|count|visit/i.test(k)) || keys.find(k => num(k) && k !== period);
+  const name = keys.find(k => /관광지|명칭|시설|장소|name|site/i.test(k) && k !== period);
+  if (!count || !period) throw new Error("필드를 감지하지 못했습니다. 응답 필드: " + keys.join(", "));
+  return items.map(r => ({
+    site: name ? String(r[name]) : "전체",
+    period: String(r[period]),
+    count: Number(String(r[count]).replace(/,/g,"")) || 0
+  })).sort((a,b) => a.period.localeCompare(b.period, "ko", {numeric:true}));
+}
+
+async function load(){
+  setStatus("불러오는 중...");
+  try {
+    const res = await fetch("/api/visitors");
+    const text = await res.text();
+    if (!res.ok) throw new Error("HTTP " + res.status + " " + text.slice(0,200));
+    rows = normalize(extractItems(text));
+    setStatus(`${rows.length}건 로드 완료`);
+    render();
+  } catch(e) { setStatus("실패: " + e.message, true); }
+}
+
+function demo(){
+  const sites = ["천지연폭포","정방폭포","쇠소깍","이중섭거리"], out = [];
+  sites.forEach((s,i) => { for (let y=2019;y<=2024;y++) out.push({site:s, period:String(y), count: Math.round((600000-i*110000)*(y===2020?.55:y===2021?.7:1+(y-2021)*.08))}); });
+  rows = out; setStatus("샘플 데이터입니다 (실제 데이터 아님)."); render();
+}
+
+function render(){
+  $("result").style.display = "block";
+  const sites = [...new Set(rows.map(r => r.site))];
+  $("site").innerHTML = ["전체 합계", ...sites].map(s => `<option>${s}</option>`).join("");
+  $("kSites").textContent = sites.length;
+  $("trust").textContent = `총 ${sites.length}개 관광지 · ${rows.length}건의 기록을 분석했습니다.`;
+  draw();
+}
+
+function series(site){
+  const m = new Map();
+  rows.filter(r => site === "전체 합계" || r.site === site).forEach(r => m.set(r.period, (m.get(r.period)||0) + r.count));
+  return [...m.entries()];
+}
+
+function draw(){
+  const s = series($("site").value), labels = s.map(x => x[0]), data = s.map(x => x[1]);
+  const total = data.reduce((a,b) => a+b, 0), maxI = data.indexOf(Math.max(...data));
+  $("kTotal").textContent = fmt(total);
+  $("hTotal").textContent = fmt(total);
+  $("hLabel").textContent = $("site").value + " 누적 관람객수";
+  $("kAvg").textContent = fmt(Math.round(total / (data.length || 1)));
+  $("kMax").textContent = labels[maxI] ? `최대 ${labels[maxI]} · ${fmt(data[maxI])}` : "-";
+  const n = data.length, d = n > 1 ? data[n-1] - data[n-2] : 0, p = n > 1 && data[n-2] ? d / data[n-2] * 100 : 0;
+  $("kDelta").textContent = n > 1 ? `최근 ${d>=0?"▲":"▼"} ${fmt(Math.abs(d))} (${p.toFixed(1)}%)` : "-";
+  $("tbody").innerHTML = s.map(([l,v]) => `<tr><td>${l}</td><td>${fmt(v)}</td></tr>`).join("");
+
+  chart?.destroy();
+  chart = new Chart($("chart"), { type:$("type").value,
+    data:{ labels, datasets:[{ data, borderColor:COLORS.line, backgroundColor:$("type").value==="line"?COLORS.fill:COLORS.line, tension:.3, fill:$("type").value==="line", borderRadius:6 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ y:{ ticks:{ callback:v => fmt(v) } } } } });
+
+  const tot = {}; rows.forEach(r => tot[r.site] = (tot[r.site]||0) + r.count);
+  const rank = Object.entries(tot).sort((a,b) => b[1]-a[1]).slice(0,15);
+  rankChart?.destroy();
+  rankChart = new Chart($("rank"), { type:"bar",
+    data:{ labels:rank.map(r=>r[0]), datasets:[{ data:rank.map(r=>r[1]), backgroundColor:COLORS.rank, borderRadius:6 }] },
+    options:{ indexAxis:"y", responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} }, scales:{ x:{ ticks:{ callback:v => fmt(v) } } } } });
+}
+
+$("load").onclick = load; $("demo").onclick = demo;
+$("site").onchange = draw; $("type").onchange = draw;
+</script>
+</body>
+</html>
