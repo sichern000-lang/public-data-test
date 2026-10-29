@@ -138,7 +138,7 @@
   <section class="black mapsec" id="map">
     <span class="tag" style="background:#1d1d20;color:#ddd">Map</span>
     <h2>제주도 관광지 지도</h2>
-    <p class="sub" style="color:#9a9a9f">노란색 구역이 서귀포시입니다. 검은 핀은 데이터에 있는 관광지, 회색 핀은 데이터가 없는 곳이며, 핀을 누르거나 목록을 선택하면 해당 위치로 이동합니다.</p>
+    <p class="sub" style="color:#9a9a9f">노란 경계 안쪽이 서귀포시입니다. 밝은 노란 핀은 데이터에 있는 관광지, 흐린 핀은 데이터가 없는 곳이며, 핀을 누르거나 목록을 선택하면 해당 위치로 이동합니다.</p>
     <div class="mapwrap">
       <div id="mapView"><div class="tip" id="mtip"></div></div>
       <ul id="mapList"></ul>
@@ -399,7 +399,7 @@ const PEAKS = [[126.3135,33.2392,.7,.5],[126.9425,33.458,.45,.35],[126.38,33.33,
 const MK = 30, MX = lng => (lng - 126.55) * Math.cos(33.38 * Math.PI / 180) * MK, MZ = lat => -(lat - 33.38) * MK;
 const norm = s => String(s).replace(/\s/g, "");
 const spotFor = site => { const n = norm(site); return n.length > 1 ? SPOTS.find(sp => [sp.name, ...sp.alias].some(a => n.includes(a) || a.includes(n))) : null; };
-let M = null;
+let M = null, M_HAT = (x, z) => 0;
 const HOME = { t:new THREE.Vector3(0, 0, 0), c:new THREE.Vector3(0, 17, 18) };
 
 function initMap(){
@@ -414,38 +414,80 @@ function initMap(){
   const dl = new THREE.DirectionalLight(0xffffff, .8); dl.position.set(-8, 16, 10); dl.castShadow = true;
   Object.assign(dl.shadow.camera, { left:-16, right:16, top:16, bottom:-16, near:1, far:50 }); scene.add(dl);
 
-  // 섬: 해안선 좌표를 부드럽게 이어서 압출
+  // 지형: 해안선 안쪽을 격자로 나눠 한라산·오름 높이를 계산해 입체 지형면을 만든다 (높이는 실제 값이 아닌 모형)
   const smooth = (list, n) => new THREE.CatmullRomCurve3(list.map(([lng, lat]) => new THREE.Vector3(MX(lng), -MZ(lat), 0))).getPoints(n).map(p => new THREE.Vector2(p.x, p.y));
   const nPts = smooth(COAST_N, 220), sPts = smooth(COAST_S, 300), bPts = smooth(BOUND, 160);
-  const pts = [...nPts, ...sPts];
-  const island = new THREE.Mesh(
-    new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth:.6, bevelEnabled:true, bevelSize:.08, bevelThickness:.08, bevelSegments:2, curveSegments:1 }),
-    new THREE.MeshStandardMaterial({ color:0x24242a, roughness:.85 }));
-  island.rotation.x = -Math.PI / 2; island.receiveShadow = true; scene.add(island);
-  // 서귀포시 구역: 노란색으로 지정
-  const seoPts = [...sPts, ...bPts];
-  const seo = new THREE.Mesh(
-    new THREE.ExtrudeGeometry(new THREE.Shape(seoPts), { depth:.12, bevelEnabled:false, curveSegments:1 }),
-    new THREE.MeshStandardMaterial({ color:0xfff566, emissive:0x2e2a00, roughness:.7 }));
-  seo.rotation.x = -Math.PI / 2; seo.position.y = .6; seo.receiveShadow = true; scene.add(seo);
-  const line = (list, y, color, op, closed) => { const g = new THREE.BufferGeometry().setFromPoints(list.map(p => new THREE.Vector3(p.x, y, -p.y)));
-    const m = new THREE.LineBasicMaterial({ color, transparent:true, opacity:op }); scene.add(closed ? new THREE.LineLoop(g, m) : new THREE.Line(g, m)); };
-  line(pts, .69, 0xffffff, .3, true);
-  line(bPts, .73, 0xffffff, .9, false);   // 시 경계선
-  line(sPts, .73, 0xffffff, .5, false);
-  // 한라산(백록담 분화구) + 오름
+  const poly = [...nPts, ...sPts].map(p => [p.x, -p.y]);
+  const seoPoly = [...sPts, ...bPts].map(p => [p.x, -p.y]);
+  const inPoly = (pg, x, z) => { let c = false;
+    for (let i = 0, j = pg.length - 1; i < pg.length; j = i++) { const [xi, zi] = pg[i], [xj, zj] = pg[j];
+      if ((zi > z) !== (zj > z) && x < (xj - xi) * (z - zi) / (zj - zi) + xi) c = !c; }
+    return c; };
+  const distPoly = (pg, x, z) => { let m = 1e9;
+    for (let i = 0, j = pg.length - 1; i < pg.length; j = i++) { const [ax, az] = pg[j], [bx, bz] = pg[i];
+      const vx = bx - ax, vz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * vx + (z - az) * vz) / (vx * vx + vz * vz || 1)));
+      const d = Math.hypot(x - ax - t * vx, z - az - t * vz); if (d < m) m = d; }
+    return m; };
+  const rng = (a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; })(7);
+
+  const X0 = MX(126.11), X1 = MX(127.0), Z0 = MZ(33.60), Z1 = MZ(33.17), NX = 200, NZ = 130;
+  const DX = (X1 - X0) / NX, DZ = (Z1 - Z0) / NZ;
   const hx = MX(126.53), hz = MZ(33.362);
-  const hl = new THREE.Mesh(new THREE.CylinderGeometry(.5, 2.1, 1.3, 28), new THREE.MeshStandardMaterial({ color:0x2e2e36, roughness:.9, flatShading:true }));
-  hl.position.set(hx, .7 + .65, hz); hl.castShadow = true; scene.add(hl);
-  const crater = new THREE.Mesh(new THREE.CircleGeometry(.36, 24), new THREE.MeshBasicMaterial({ color:0x121216 }));
-  crater.rotation.x = -Math.PI / 2; crater.position.set(hx, 2.01, hz); scene.add(crater);
-  PEAKS.forEach(([lng, lat, h, r]) => {
-    const c = new THREE.Mesh(new THREE.ConeGeometry(r, h, 14), new THREE.MeshStandardMaterial({ color:0x34343c, roughness:.9, flatShading:true }));
-    c.position.set(MX(lng), .7 + h / 2, MZ(lat)); c.castShadow = true; scene.add(c);
-  });
-  const zone = (text, lng, lat, color, w) => { const s = label3D(text, color); s.scale.set(w, w / 4, 1); s.position.set(MX(lng), .95, MZ(lat)); scene.add(s); };
-  zone("서귀포시", 126.62, 33.295, "#111111", 5);
-  zone("제주시", 126.55, 33.47, "rgba(255,255,255,.35)", 4);
+  const oreum = PEAKS.map(([lng, lat, h, r]) => [MX(lng), MZ(lat), h * .9, r * .6]);
+  for (let n = 0; n < 48;) {   // 흩어진 작은 오름들 (고정 시드)
+    const x = X0 + rng() * (X1 - X0), z = Z0 + rng() * (Z1 - Z0);
+    if (inPoly(poly, x, z) && distPoly(poly, x, z) > 1) { oreum.push([x, z, .12 + rng() * .2, .18 + rng() * .18]); n++; }
+  }
+  const elev = (x, z, d) => {
+    const dx = x - hx, dz = (z - hz) * 1.15, r2 = dx * dx + dz * dz;
+    let h = 2.35 * Math.exp(-r2 / (2 * 1.7 * 1.7)) + .95 * Math.exp(-r2 / (2 * 3.8 * 3.8)) + .25;
+    h -= .42 * Math.exp(-r2 / (2 * .17 * .17));   // 백록담
+    oreum.forEach(([ox, oz, oh, os]) => { h += oh * Math.exp(-((x - ox) ** 2 + (z - oz) ** 2) / (2 * os * os)); });
+    h += .04 * (Math.sin(x * 2.9 + z * 2.1) + Math.sin(x * 5.3 - z * 4.7) + .5 * Math.sin(x * 9.1 + z * 7.7));
+    const k = Math.min(1, d / .9);
+    return Math.max(0, h) * k * k * (3 - 2 * k);
+  };
+  const stops = [[0, 0x26302a], [.12, 0x34402f], [.35, 0x4a5638], [.6, 0x68664f], [.85, 0x8b8a82], [1, 0xb9b8b2]].map(([t, c]) => [t, new THREE.Color(c)]);
+  const ground = e => { let i = 1; while (i < stops.length - 1 && e > stops[i][0]) i++;
+    const [t0, c0] = stops[i - 1], [t1, c1] = stops[i]; return c0.clone().lerp(c1, Math.max(0, Math.min(1, (e - t0) / (t1 - t0)))); };
+  const tint = new THREE.Color(0xf2e84c);
+
+  const geo = new THREE.PlaneGeometry(X1 - X0, Z1 - Z0, NX, NZ); geo.rotateX(-Math.PI / 2); geo.translate((X0 + X1) / 2, 0, (Z0 + Z1) / 2);
+  const pos = geo.attributes.position, cols = new Float32Array(pos.count * 3), inside = new Uint8Array(pos.count), hv = new Float32Array(pos.count);
+  const sea = new THREE.Color(0x101114);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i);
+    let c = sea;
+    if (inPoly(poly, x, z)) {
+      inside[i] = 1;
+      const h = elev(x, z, distPoly(poly, x, z)); hv[i] = h; pos.setY(i, h);
+      c = ground(h / 3.2);
+      if (inPoly(seoPoly, x, z)) c = c.clone().lerp(tint, .55);
+    } else pos.setY(i, -.3);
+    cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+  }
+  const idx = geo.index.array, keep = [];
+  for (let i = 0; i < idx.length; i += 3) if (inside[idx[i]] || inside[idx[i + 1]] || inside[idx[i + 2]]) keep.push(idx[i], idx[i + 1], idx[i + 2]);
+  geo.setIndex(keep); geo.setAttribute("color", new THREE.BufferAttribute(cols, 3)); geo.computeVertexNormals();
+  const terrain = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors:true, roughness:.95, metalness:0 }));
+  terrain.castShadow = true; terrain.receiveShadow = true; scene.add(terrain);
+  const hAt = (x, z) => {   // 격자 높이를 보간해서 임의 좌표의 지형 높이를 구한다
+    const u = Math.max(0, Math.min(NX - 1e-6, (x - X0) / DX)), v = Math.max(0, Math.min(NZ - 1e-6, (z - Z0) / DZ));
+    const i = Math.floor(u), j = Math.floor(v), fu = u - i, fv = v - j, W = NX + 1, a = j * W + i;
+    return hv[a] * (1 - fu) * (1 - fv) + hv[a + 1] * fu * (1 - fv) + hv[a + W] * (1 - fu) * fv + hv[a + W + 1] * fu * fv; };
+  M_HAT = hAt;
+
+  // 서귀포시 구역: 노란 경계선 + 반투명 노란 벽
+  const ring = seoPoly.map(([x, z]) => [x, z, hAt(x, z)]);
+  const lg = new THREE.BufferGeometry().setFromPoints(ring.map(([x, z, h]) => new THREE.Vector3(x, h + .04, z)));
+  scene.add(new THREE.LineLoop(lg, new THREE.LineBasicMaterial({ color:0xfff566 })));
+  const wall = [], wi = [];
+  ring.forEach(([x, z, h], i) => { wall.push(x, h, z, x, h + .5, z); if (i) { const a = (i - 1) * 2; wi.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); } });
+  const wg = new THREE.BufferGeometry(); wg.setAttribute("position", new THREE.Float32BufferAttribute(wall, 3)); wg.setIndex(wi);
+  scene.add(new THREE.Mesh(wg, new THREE.MeshBasicMaterial({ color:0xfff566, transparent:true, opacity:.2, side:THREE.DoubleSide, depthWrite:false })));
+  const zone = (text, lng, lat, color, w, stroke) => { const s = label3D(text, color, stroke); s.scale.set(w, w / 4, 1); s.position.set(MX(lng), hAt(MX(lng), MZ(lat)) + .9, MZ(lat)); scene.add(s); };
+  zone("서귀포시", 126.66, 33.30, "#fff566", 5, true);
+  zone("제주시", 126.55, 33.50, "rgba(255,255,255,.4)", 4, false);
   const grid = new THREE.GridHelper(44, 44, 0x44444b, 0x25252a); grid.position.y = -.05; scene.add(grid);
 
   const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -471,7 +513,7 @@ function initMap(){
   new ResizeObserver(() => {
     const w = el.clientWidth, h = el.clientHeight; if (!w || !h) return;
     renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
-    const f = Math.max(1.35, 2.6 / camera.aspect);   // 좁은 화면에서는 섬 전체가 들어오도록 멀리서 시작
+    const f = Math.max(1.2, 1.6 / camera.aspect);   // 좁은 화면에서는 섬 전체가 들어오도록 멀리서 시작
     HOME.c.set(0, 17 * f, 18 * f);
     if (!M.focused) camera.position.copy(HOME.c);
   }).observe(el);
@@ -501,18 +543,18 @@ function buildMap(){
   while (M.pinGroup.children.length) { const c = M.pinGroup.children.pop(); c.geometry?.dispose(); c.material?.map?.dispose(); c.material?.dispose(); }
   M.pins = []; M.label = null; M.last = null;
   SPOTS.forEach(sp => {
-    // 모든 핀은 같은 크기. 데이터가 있는 곳은 검정 + 퍼지는 링, 없는 곳은 회색
-    const total = tot[sp.name], on = total != null, r = .11, h = .5, base = .72;
-    const x = MX(sp.lng), z = MZ(sp.lat);
-    const col = on ? 0x111111 : 0x7a7a82;
+    // 모든 핀은 같은 크기의 노란 핀. 데이터가 있는 곳은 밝게 빛나고 링이 퍼지며, 없는 곳은 흐린 노랑
+    const total = tot[sp.name], on = total != null, r = .11, h = .55;
+    const x = MX(sp.lng), z = MZ(sp.lat), base = M_HAT(x, z) + .02;
+    const col = on ? 0xfff566 : 0x8f8b52;
     const stem = new THREE.Mesh(new THREE.CylinderGeometry(.015, .015, h, 8), new THREE.MeshStandardMaterial({ color:col }));
     stem.position.set(x, base + h / 2, z);
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 20), new THREE.MeshStandardMaterial({ color:col, roughness:.35 }));
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 20), new THREE.MeshStandardMaterial({ color:col, emissive:on ? 0x8a7f00 : 0x000000, roughness:.35 }));
     ball.position.set(x, base + h + r, z); ball.userData = { name:sp.name, total, r, h };
     M.pinGroup.add(stem, ball); M.pins.push(ball);
     if (on) {
-      const ring = new THREE.Mesh(new THREE.RingGeometry(.14, .2, 32), new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:.8, side:THREE.DoubleSide }));
-      ring.rotation.x = -Math.PI / 2; ring.position.set(x, base + .02, z); M.pinGroup.add(ring); ball.userData.ring = ring;
+      const ring = new THREE.Mesh(new THREE.RingGeometry(.14, .2, 32), new THREE.MeshBasicMaterial({ color:0xfff566, transparent:true, opacity:.8, side:THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(x, base + .03, z); M.pinGroup.add(ring); ball.userData.ring = ring;
     }
   });
   const list = $("mapList"); list.innerHTML = "";
@@ -520,7 +562,7 @@ function buildMap(){
     b.innerHTML = `<span>${txt}</span><span>${val}</span>`; if (dim) b.classList.add("dim"); b.dataset.n = txt; b.onclick = fn; li.appendChild(b); list.appendChild(li); };
   mk("제주 전체", "", false, () => mapFocus(null));
   [...SPOTS].sort((a, b) => (tot[b.name] || -1) - (tot[a.name] || -1)).forEach(sp => mk(sp.name, tot[sp.name] != null ? fmt(tot[sp.name]) : "—", tot[sp.name] == null, () => mapFocus(sp.name)));
-  $("mapNote").textContent = (miss.size ? `좌표가 없는 관광지: ${[...miss].join(", ")} — 코드의 SPOTS에 좌표를 추가하면 지도에 표시됩니다.\n` : "") + "※ 핀 좌표는 대략적인 위치이며, 섬 모양은 단순화한 것입니다.";
+  $("mapNote").textContent = (miss.size ? `좌표가 없는 관광지: ${[...miss].join(", ")} — 코드의 SPOTS에 좌표를 추가하면 지도에 표시됩니다.\n` : "") + "※ 핀 좌표와 경계선은 대략적인 위치이며, 지형 높이는 실제 지도가 아닌 모형입니다.";
 }
 
 function mapFocus(name){
@@ -531,7 +573,7 @@ function mapFocus(name){
   M.focused = !!p;
   if (!p) { M.goal = { t:HOME.t, c:HOME.c }; return; }
   const q = p.position;
-  M.goal = { t:new THREE.Vector3(q.x, .8, q.z), c:new THREE.Vector3(q.x + 2.5, 5.5, q.z + 5) };
+  M.goal = { t:new THREE.Vector3(q.x, q.y - .4, q.z), c:new THREE.Vector3(q.x + 2.5, q.y + 4.6, q.z + 5) };
   const l = label3D(name, "#ffffff", true); l.scale.set(3, .75, 1); l.position.set(q.x, q.y + p.userData.r + .5, q.z);
   M.pinGroup.add(l); M.label = l;
 }
