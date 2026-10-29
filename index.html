@@ -166,6 +166,14 @@ function normalize(items){
   const name = keys.find(k => /관광지|명칭|시설|장소|명$|name|site|spot|place/i.test(k) && k !== period && k !== count)
     || keys.find(k => k !== period && k !== count && isText(k) && !/일|날짜|date|비고|remark/i.test(k));
   window.__fields = { name, period, count, keys };
+  // 관광지가 행이 아니라 열(컬럼)로 펼쳐진 형태: 숫자 컬럼마다 하나의 관광지로 취급
+  const wide = keys.filter(k => k !== period && num(k) && !/합계|총|total|^계$|sum/i.test(k));
+  if (!name && wide.length > 1) {
+    window.__fields.name = "(컬럼별: " + wide.join(", ") + ")";
+    return items.flatMap(r => wide.map(k => ({
+      site: k, period: String(r[period]), count: Number(String(r[k]).replace(/,/g,"")) || 0
+    }))).sort((a,b) => a.period.localeCompare(b.period, "ko", {numeric:true}));
+  }
   return items.map(r => ({
     site: name ? String(r[name]) : "전체",
     period: String(r[period]),
