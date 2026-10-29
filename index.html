@@ -61,7 +61,15 @@
   footer { text-align:center; font-size:11px; color:var(--sub); padding:36px 0; }
   .tags { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
   .tags span { background:#fff; color:#000; border-radius:999px; padding:6px 14px; font-size:12px; }
-  @media (max-width:760px){ .hero,.grid2{grid-template-columns:1fr;} nav .links{display:none;} .panel{min-height:300px;} }
+  .mapsec { margin-top:14px; }
+  .mapwrap { display:grid; grid-template-columns:1fr 230px; gap:14px; margin-top:16px; }
+  #mapView { position:relative; height:500px; border-radius:12px; overflow:hidden; cursor:grab; background:radial-gradient(ellipse at 50% 40%,#26262b 0%,#0c0c0e 75%); }
+  #mapView canvas { display:block; width:100%; height:100%; }
+  #mapList { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; max-height:500px; overflow:auto; }
+  #mapList button { width:100%; display:flex; justify-content:space-between; gap:8px; text-align:left; font:inherit; font-size:12px; padding:10px 12px; border-radius:10px; border:1px solid #2c2c31; background:#151518; color:#ddd; cursor:pointer; }
+  #mapList button.on { background:var(--yellow); color:#000; border-color:var(--yellow); }
+  #mapList button.dim { opacity:.5; }
+  @media (max-width:760px){ .mapwrap{grid-template-columns:1fr;} #mapList{max-height:none; flex-direction:row; flex-wrap:wrap;} #mapList button{width:auto;} .hero,.grid2{grid-template-columns:1fr;} nav .links{display:none;} .panel{min-height:300px;} }
 </style>
 </head>
 <body>
@@ -127,6 +135,16 @@
         <div style="position:relative;height:360px"><canvas id="rank"></canvas></div></div>
     </div>
   </div>
+  <section class="black mapsec" id="map">
+    <span class="tag" style="background:#1d1d20;color:#ddd">Map</span>
+    <h2>제주도 관광지 지도</h2>
+    <p class="sub" style="color:#9a9a9f">핀의 위치는 관광지 좌표, 크기는 누적 관람객수입니다. 핀을 누르거나 오른쪽 목록을 선택하면 해당 위치로 이동합니다.</p>
+    <div class="mapwrap">
+      <div id="mapView"><div class="tip" id="mtip"></div></div>
+      <ul id="mapList"></ul>
+    </div>
+    <p class="msg" id="mapNote" style="color:#8a8a8f"></p>
+  </section>
   <footer>데이터 출처: 공공데이터포털 · 제주특별자치도 서귀포시_직영관광지 관람객수 추이</footer>
 </div>
 
@@ -213,7 +231,7 @@ function render(){
   });
   $("kSites").textContent = sites.length;
   $("trust").textContent = `총 ${sites.length}개 관광지 · ${rows.length}건의 기록을 분석했습니다.`;
-  draw(); build3D();
+  buildMap(); draw(); build3D();
 }
 
 function series(site){
@@ -224,7 +242,7 @@ function series(site){
 
 function draw(){
   [...$("sites").children].forEach(b => b.classList.toggle("on", b.textContent === curSite));
-  recolor3D();
+  recolor3D(); mapSync();
   const s = series(curSite), labels = s.map(x => x[0]), data = s.map(x => x[1]);
   const total = data.reduce((a,b) => a+b, 0), maxI = data.indexOf(Math.max(...data));
   $("kTotal").textContent = fmt(total);
@@ -352,7 +370,150 @@ function recolor3D(){
     b.material.color.set(hi ? 0xfff566 : all ? 0xeeeeee : 0x3a3a40);
   });
 }
-init3D(); build3D();
+/* ===== Three.js: 제주도 지도 + 관광지 핀 ===== */
+// 좌표는 대략적인 위치입니다. 데이터에 있는 관광지가 지도에 안 나오면 여기에 추가하세요.
+const SPOTS = [
+  { name:"천지연폭포",   lat:33.2467, lng:126.5547, alias:["천지연"] },
+  { name:"정방폭포",     lat:33.2443, lng:126.5719, alias:["정방"] },
+  { name:"쇠소깍",       lat:33.2530, lng:126.6226, alias:[] },
+  { name:"이중섭거리",   lat:33.2462, lng:126.5640, alias:["이중섭"] },
+  { name:"서복전시관",   lat:33.2450, lng:126.5725, alias:["서복"] },
+  { name:"외돌개",       lat:33.2394, lng:126.5460, alias:[] },
+  { name:"새연교",       lat:33.2381, lng:126.5578, alias:["새섬"] },
+  { name:"천제연폭포",   lat:33.2557, lng:126.4167, alias:["천제연"] },
+  { name:"주상절리대",   lat:33.2379, lng:126.4256, alias:["주상절리"] },
+  { name:"산방산",       lat:33.2392, lng:126.3135, alias:[] },
+  { name:"용머리해안",   lat:33.2306, lng:126.3143, alias:["용머리"] },
+  { name:"섭지코지",     lat:33.4240, lng:126.9314, alias:[] },
+  { name:"성산일출봉",   lat:33.4580, lng:126.9425, alias:["일출봉"] }
+];
+const COAST = [[126.165,33.325],[126.19,33.38],[126.235,33.415],[126.29,33.455],[126.35,33.495],[126.43,33.515],[126.52,33.525],[126.60,33.535],[126.69,33.545],[126.78,33.555],[126.86,33.545],[126.925,33.51],[126.945,33.47],[126.94,33.43],[126.90,33.40],[126.87,33.375],[126.82,33.33],[126.75,33.29],[126.68,33.265],[126.60,33.245],[126.52,33.235],[126.45,33.235],[126.38,33.235],[126.31,33.225],[126.26,33.205],[126.215,33.22],[126.17,33.255],[126.155,33.29]];
+const MK = 30, MX = lng => (lng - 126.55) * Math.cos(33.38 * Math.PI / 180) * MK, MZ = lat => -(lat - 33.38) * MK;
+const norm = s => String(s).replace(/\s/g, "");
+const spotFor = site => { const n = norm(site); return n.length > 1 ? SPOTS.find(sp => [sp.name, ...sp.alias].some(a => n.includes(a) || a.includes(n))) : null; };
+let M = null;
+const HOME = { t:new THREE.Vector3(0, 0, 0), c:new THREE.Vector3(0, 17, 18) };
+
+function initMap(){
+  if (typeof THREE === "undefined") return;
+  const el = $("mapView");
+  const scene = new THREE.Scene(); scene.fog = new THREE.Fog(0x0c0c0e, 40, 90);
+  const camera = new THREE.PerspectiveCamera(38, 1, .1, 120); camera.position.copy(HOME.c);
+  const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.shadowMap.enabled = true;
+  el.appendChild(renderer.domElement);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x25252a, .9));
+  const dl = new THREE.DirectionalLight(0xffffff, .8); dl.position.set(-8, 16, 10); dl.castShadow = true;
+  Object.assign(dl.shadow.camera, { left:-16, right:16, top:16, bottom:-16, near:1, far:50 }); scene.add(dl);
+
+  // 섬: 해안선 좌표를 부드럽게 이어서 압출
+  const curve = new THREE.CatmullRomCurve3(COAST.map(([lng, lat]) => new THREE.Vector3(MX(lng), -MZ(lat), 0)), true);
+  const pts = curve.getPoints(240).map(p => new THREE.Vector2(p.x, p.y));
+  const island = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth:.6, bevelEnabled:true, bevelSize:.08, bevelThickness:.08, bevelSegments:2, curveSegments:1 }),
+    new THREE.MeshStandardMaterial({ color:0x24242a, roughness:.85 }));
+  island.rotation.x = -Math.PI / 2; island.receiveShadow = true; scene.add(island);
+  const edge = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, .69, -p.y))),
+    new THREE.LineBasicMaterial({ color:0xfff566, transparent:true, opacity:.55 }));
+  scene.add(edge);
+  const hl = new THREE.Mesh(new THREE.ConeGeometry(2.7, 1.5, 28), new THREE.MeshStandardMaterial({ color:0x31313a, roughness:.9, flatShading:true }));
+  hl.position.set(MX(126.53), .7 + .75, MZ(33.362)); hl.castShadow = true; scene.add(hl);
+  const grid = new THREE.GridHelper(44, 44, 0x44444b, 0x25252a); grid.position.y = -.05; scene.add(grid);
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  Object.assign(controls, { enableDamping:true, enablePan:false, minDistance:5, maxDistance:70, maxPolarAngle:Math.PI / 2.1 });
+  const pinGroup = new THREE.Group(); scene.add(pinGroup);
+  const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(2, 2);
+  M = { scene, camera, renderer, controls, pinGroup, ray, mouse, pins:[], goal:null, label:null, last:null, mx:0, my:0 };
+  controls.addEventListener("start", () => { M.goal = null; });
+  const cv = renderer.domElement;
+  cv.addEventListener("pointermove", e => {
+    const r = cv.getBoundingClientRect();
+    mouse.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    M.mx = e.clientX - r.left; M.my = e.clientY - r.top;
+  });
+  cv.addEventListener("pointerleave", () => mouse.set(2, 2));
+  let down = null;
+  cv.addEventListener("pointerdown", e => { down = [e.clientX, e.clientY]; });
+  cv.addEventListener("pointerup", e => {
+    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 4) return;
+    ray.setFromCamera(mouse, camera);
+    const h = ray.intersectObjects(M.pins)[0]; if (h) mapFocus(h.object.userData.name);
+  });
+  new ResizeObserver(() => {
+    const w = el.clientWidth, h = el.clientHeight; if (!w || !h) return;
+    renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+    const f = Math.max(1.35, 2.6 / camera.aspect);   // 좁은 화면에서는 섬 전체가 들어오도록 멀리서 시작
+    HOME.c.set(0, 17 * f, 18 * f);
+    if (!M.focused) camera.position.copy(HOME.c);
+  }).observe(el);
+  (function loop(){
+    requestAnimationFrame(loop);
+    const t = performance.now() / 1000;
+    M.pins.forEach((p, i) => {
+      const r = p.userData.ring; if (!r) return;
+      const k = (t * .7 + i * .27) % 1; r.scale.setScalar(1 + k * 2); r.material.opacity = .6 * (1 - k);
+    });
+    if (M.goal) { controls.target.lerp(M.goal.t, .08); camera.position.lerp(M.goal.c, .06); }
+    ray.setFromCamera(mouse, camera);
+    const hit = ray.intersectObjects(M.pins)[0], tip = $("mtip");
+    cv.style.cursor = hit ? "pointer" : "";
+    if (hit) { const u = hit.object.userData; tip.textContent = u.total != null ? `${u.name} · 누적 ${fmt(u.total)}명` : `${u.name} · 데이터 없음`; tip.style.display = "block"; tip.style.left = (M.mx + 14) + "px"; tip.style.top = (M.my + 14) + "px"; }
+    else tip.style.display = "none";
+    controls.update(); renderer.render(scene, camera);
+  })();
+}
+
+function buildMap(){
+  if (!M) return;
+  const src = rows.length ? rows : demoRows();
+  const tot = {}, miss = new Set();
+  src.forEach(r => { const sp = spotFor(r.site); if (sp) tot[sp.name] = (tot[sp.name] || 0) + r.count; else miss.add(r.site); });
+  const max = Math.max(1, ...Object.values(tot));
+  while (M.pinGroup.children.length) { const c = M.pinGroup.children.pop(); c.geometry?.dispose(); c.material?.map?.dispose(); c.material?.dispose(); }
+  M.pins = []; M.label = null; M.last = null;
+  SPOTS.forEach(sp => {
+    const total = tot[sp.name], on = total != null, k = on ? total / max : 0;
+    const r = on ? .17 + .3 * k : .1, h = on ? 1.1 + 2 * k : .5;
+    const x = MX(sp.lng), z = MZ(sp.lat);
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(.025, .025, h, 8), new THREE.MeshStandardMaterial({ color:on ? 0xfff566 : 0x6d6d75 }));
+    stem.position.set(x, .7 + h / 2, z);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 24), new THREE.MeshStandardMaterial({ color:on ? 0xfff566 : 0x8a8a92, emissive:on ? 0x4a4400 : 0x000000, roughness:.4 }));
+    ball.position.set(x, .7 + h + r, z); ball.userData = { name:sp.name, total, r, h };
+    M.pinGroup.add(stem, ball); M.pins.push(ball);
+    if (on) {
+      const ring = new THREE.Mesh(new THREE.RingGeometry(r * 1.1, r * 1.35, 40), new THREE.MeshBasicMaterial({ color:0xfff566, transparent:true, opacity:.6, side:THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(x, .72, z); M.pinGroup.add(ring); ball.userData.ring = ring;
+    }
+  });
+  const list = $("mapList"); list.innerHTML = "";
+  const mk = (txt, val, dim, fn) => { const li = document.createElement("li"), b = document.createElement("button");
+    b.innerHTML = `<span>${txt}</span><span>${val}</span>`; if (dim) b.classList.add("dim"); b.dataset.n = txt; b.onclick = fn; li.appendChild(b); list.appendChild(li); };
+  mk("제주 전체", "", false, () => mapFocus(null));
+  [...SPOTS].sort((a, b) => (tot[b.name] || -1) - (tot[a.name] || -1)).forEach(sp => mk(sp.name, tot[sp.name] != null ? fmt(tot[sp.name]) : "—", tot[sp.name] == null, () => mapFocus(sp.name)));
+  $("mapNote").textContent = (miss.size ? `좌표가 없는 관광지: ${[...miss].join(", ")} — 코드의 SPOTS에 좌표를 추가하면 지도에 표시됩니다.\n` : "") + "※ 핀 좌표는 대략적인 위치이며, 섬 모양은 단순화한 것입니다.";
+}
+
+function mapFocus(name){
+  if (!M) return;
+  if (M.label) { M.pinGroup.remove(M.label); M.label = null; }
+  const p = M.pins.find(p => p.userData.name === name);
+  [...$("mapList").querySelectorAll("button")].forEach(b => b.classList.toggle("on", name ? b.dataset.n === name : b.dataset.n === "제주 전체"));
+  M.focused = !!p;
+  if (!p) { M.goal = { t:HOME.t.clone(), c:HOME.c.clone() }; return; }
+  const q = p.position;
+  M.goal = { t:new THREE.Vector3(q.x, .8, q.z), c:new THREE.Vector3(q.x + 2.5, 5.5, q.z + 5) };
+  const l = label3D(name, "#fff566"); l.scale.set(4, 1, 1); l.position.set(q.x, q.y + p.userData.r + .7, q.z);
+  M.pinGroup.add(l); M.label = l;
+}
+// 위쪽 버튼으로 관광지를 고르면 지도도 같이 이동
+function mapSync(){
+  if (!M || M.last === curSite) return; M.last = curSite;
+  const sp = curSite === "전체 합계" ? null : spotFor(curSite);
+  if (curSite === "전체 합계" || sp) mapFocus(sp ? sp.name : null);
+}
+
+init3D(); build3D(); initMap(); buildMap(); mapFocus(null);
 </script>
 </body>
 </html>
