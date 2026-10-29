@@ -40,6 +40,9 @@
   .stats span { font-size:11px; color:#555; }
   .controls { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
   select { font:inherit; font-size:13px; padding:8px 14px; border-radius:999px; border:1px solid #00000020; background:#fff; }
+  .sites { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+  .sites button { font:inherit; font-size:13px; padding:8px 16px; border-radius:999px; border:1px solid #00000025; background:#fff; color:var(--text); cursor:pointer; }
+  .sites button.on { background:var(--black); color:#fff; border-color:var(--black); }
   .chart-box { position:relative; height:320px; background:#fff; border-radius:12px; padding:14px; }
   .sec { margin-top:14px; }
   .card { border:1px solid var(--line); border-radius:16px; padding:22px; }
@@ -88,8 +91,8 @@
     <section class="yellow" id="trend">
       <span class="tag" style="background:#fff">Trend</span>
       <h2>기간별 관람객 추이</h2>
+      <div class="sites" id="sites"></div>
       <div class="controls">
-        <select id="site"></select>
         <select id="type"><option value="line">꺾은선</option><option value="bar">막대</option></select>
       </div>
       <div class="chart-box"><canvas id="chart"></canvas></div>
@@ -124,7 +127,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const fmt = n => Number(n).toLocaleString("ko-KR");
-let rows = [], chart, rankChart;
+let rows = [], chart, rankChart, curSite = "전체 합계";
 const COLORS = { line:"#0a0a0a", fill:"rgba(10,10,10,.12)", rank:"#0a0a0a" };
 
 function setStatus(t, err){ $("status").textContent = t; $("status").className = "msg" + (err ? " err" : ""); }
@@ -182,7 +185,14 @@ function demo(){
 function render(){
   $("result").style.display = "block";
   const sites = [...new Set(rows.map(r => r.site))];
-  $("site").innerHTML = ["전체 합계", ...sites].map(s => `<option>${s}</option>`).join("");
+  curSite = "전체 합계";
+  $("sites").innerHTML = "";
+  ["전체 합계", ...sites].forEach(s => {
+    const b = document.createElement("button");
+    b.textContent = s;
+    b.onclick = () => { curSite = s; draw(); };
+    $("sites").appendChild(b);
+  });
   $("kSites").textContent = sites.length;
   $("trust").textContent = `총 ${sites.length}개 관광지 · ${rows.length}건의 기록을 분석했습니다.`;
   draw();
@@ -195,11 +205,12 @@ function series(site){
 }
 
 function draw(){
-  const s = series($("site").value), labels = s.map(x => x[0]), data = s.map(x => x[1]);
+  [...$("sites").children].forEach(b => b.classList.toggle("on", b.textContent === curSite));
+  const s = series(curSite), labels = s.map(x => x[0]), data = s.map(x => x[1]);
   const total = data.reduce((a,b) => a+b, 0), maxI = data.indexOf(Math.max(...data));
   $("kTotal").textContent = fmt(total);
   $("hTotal").textContent = fmt(total);
-  $("hLabel").textContent = $("site").value + " 누적 관람객수";
+  $("hLabel").textContent = curSite +" 누적 관람객수";
   $("kAvg").textContent = fmt(Math.round(total / (data.length || 1)));
   $("kMax").textContent = labels[maxI] ? `최대 ${labels[maxI]} · ${fmt(data[maxI])}` : "-";
   const n = data.length, d = n > 1 ? data[n-1] - data[n-2] : 0, p = n > 1 && data[n-2] ? d / data[n-2] * 100 : 0;
@@ -220,7 +231,7 @@ function draw(){
 }
 
 $("load").onclick = load; $("demo").onclick = demo;
-$("site").onchange = draw; $("type").onchange = draw;
+$("type").onchange = draw;
 </script>
 </body>
 </html>
