@@ -138,7 +138,7 @@
   <section class="black mapsec" id="map">
     <span class="tag" style="background:#1d1d20;color:#ddd">Map</span>
     <h2>제주도 관광지 지도</h2>
-    <p class="sub" style="color:#9a9a9f">핀의 위치는 관광지 좌표, 크기는 누적 관람객수입니다. 핀을 누르거나 오른쪽 목록을 선택하면 해당 위치로 이동합니다.</p>
+    <p class="sub" style="color:#9a9a9f">노란색 구역이 서귀포시입니다. 검은 핀은 데이터에 있는 관광지, 회색 핀은 데이터가 없는 곳이며, 핀을 누르거나 목록을 선택하면 해당 위치로 이동합니다.</p>
     <div class="mapwrap">
       <div id="mapView"><div class="tip" id="mtip"></div></div>
       <ul id="mapList"></ul>
@@ -272,10 +272,12 @@ $("type").onchange = draw;
 
 /* ===== Three.js: 관광지 × 기간 3D 막대 ===== */
 let T = null;
-function label3D(text, color = "rgba(255,255,255,.6)"){
+function label3D(text, color = "rgba(255,255,255,.6)", stroke = false){
   const c = document.createElement("canvas"); c.width = 256; c.height = 64;
   const g = c.getContext("2d"); g.font = "500 28px Inter, 'Noto Sans KR', sans-serif";
-  g.fillStyle = color; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(text.slice(0,10), 128, 32);
+  g.fillStyle = color; g.textAlign = "center"; g.textBaseline = "middle";
+  if (stroke) { g.lineWidth = 7; g.lineJoin = "round"; g.strokeStyle = "rgba(0,0,0,.85)"; g.strokeText(text.slice(0,10), 128, 32); }
+  g.fillText(text.slice(0,10), 128, 32);
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map:new THREE.CanvasTexture(c), transparent:true }));
   s.scale.set(3, .75, 1); return s;
 }
@@ -387,7 +389,13 @@ const SPOTS = [
   { name:"섭지코지",     lat:33.4240, lng:126.9314, alias:[] },
   { name:"성산일출봉",   lat:33.4580, lng:126.9425, alias:["일출봉"] }
 ];
-const COAST = [[126.165,33.325],[126.19,33.38],[126.235,33.415],[126.29,33.455],[126.35,33.495],[126.43,33.515],[126.52,33.525],[126.60,33.535],[126.69,33.545],[126.78,33.555],[126.86,33.545],[126.925,33.51],[126.945,33.47],[126.94,33.43],[126.90,33.40],[126.87,33.375],[126.82,33.33],[126.75,33.29],[126.68,33.265],[126.60,33.245],[126.52,33.235],[126.45,33.235],[126.38,33.235],[126.31,33.225],[126.26,33.205],[126.215,33.22],[126.17,33.255],[126.155,33.29]];
+// 해안선(대략): 제주시 쪽 북쪽 해안(서→동)과 서귀포시 쪽 동·남·서 해안(동→서)으로 나눠 둡니다.
+const COAST_N = [[126.162,33.283],[126.158,33.312],[126.173,33.335],[126.200,33.352],[126.226,33.395],[126.255,33.410],[126.290,33.450],[126.310,33.472],[126.345,33.488],[126.390,33.495],[126.430,33.510],[126.470,33.514],[126.510,33.525],[126.560,33.527],[126.600,33.540],[126.650,33.545],[126.700,33.553],[126.750,33.560],[126.800,33.563],[126.850,33.553],[126.890,33.530],[126.928,33.502]];
+const COAST_S = [[126.928,33.502],[126.948,33.468],[126.946,33.452],[126.938,33.440],[126.940,33.425],[126.915,33.412],[126.880,33.390],[126.855,33.360],[126.830,33.330],[126.790,33.300],[126.750,33.285],[126.710,33.275],[126.670,33.260],[126.625,33.250],[126.590,33.245],[126.555,33.240],[126.520,33.236],[126.480,33.236],[126.440,33.232],[126.410,33.236],[126.370,33.237],[126.330,33.232],[126.300,33.225],[126.270,33.210],[126.245,33.208],[126.220,33.215],[126.195,33.235],[126.175,33.258],[126.162,33.283]];
+// 서귀포시와 제주시의 행정 경계(내륙, 서→동): 대략적인 위치
+const BOUND = [[126.162,33.283],[126.215,33.300],[126.270,33.335],[126.330,33.355],[126.400,33.365],[126.470,33.372],[126.530,33.382],[126.600,33.400],[126.670,33.430],[126.740,33.460],[126.820,33.490],[126.900,33.505],[126.928,33.502]];
+// 오름·산 (작은 봉우리): [경도, 위도, 높이, 반지름]
+const PEAKS = [[126.3135,33.2392,.7,.5],[126.9425,33.458,.45,.35],[126.38,33.33,.35,.3],[126.45,33.335,.35,.3],[126.62,33.34,.35,.3],[126.69,33.375,.3,.28],[126.80,33.40,.3,.28],[126.35,33.40,.3,.3],[126.47,33.435,.3,.3],[126.70,33.47,.3,.28],[126.29,33.285,.3,.28],[126.77,33.33,.3,.25]];
 const MK = 30, MX = lng => (lng - 126.55) * Math.cos(33.38 * Math.PI / 180) * MK, MZ = lat => -(lat - 33.38) * MK;
 const norm = s => String(s).replace(/\s/g, "");
 const spotFor = site => { const n = norm(site); return n.length > 1 ? SPOTS.find(sp => [sp.name, ...sp.alias].some(a => n.includes(a) || a.includes(n))) : null; };
@@ -407,17 +415,37 @@ function initMap(){
   Object.assign(dl.shadow.camera, { left:-16, right:16, top:16, bottom:-16, near:1, far:50 }); scene.add(dl);
 
   // 섬: 해안선 좌표를 부드럽게 이어서 압출
-  const curve = new THREE.CatmullRomCurve3(COAST.map(([lng, lat]) => new THREE.Vector3(MX(lng), -MZ(lat), 0)), true);
-  const pts = curve.getPoints(240).map(p => new THREE.Vector2(p.x, p.y));
+  const smooth = (list, n) => new THREE.CatmullRomCurve3(list.map(([lng, lat]) => new THREE.Vector3(MX(lng), -MZ(lat), 0))).getPoints(n).map(p => new THREE.Vector2(p.x, p.y));
+  const nPts = smooth(COAST_N, 220), sPts = smooth(COAST_S, 300), bPts = smooth(BOUND, 160);
+  const pts = [...nPts, ...sPts];
   const island = new THREE.Mesh(
     new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth:.6, bevelEnabled:true, bevelSize:.08, bevelThickness:.08, bevelSegments:2, curveSegments:1 }),
     new THREE.MeshStandardMaterial({ color:0x24242a, roughness:.85 }));
   island.rotation.x = -Math.PI / 2; island.receiveShadow = true; scene.add(island);
-  const edge = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts.map(p => new THREE.Vector3(p.x, .69, -p.y))),
-    new THREE.LineBasicMaterial({ color:0xfff566, transparent:true, opacity:.55 }));
-  scene.add(edge);
-  const hl = new THREE.Mesh(new THREE.ConeGeometry(2.7, 1.5, 28), new THREE.MeshStandardMaterial({ color:0x31313a, roughness:.9, flatShading:true }));
-  hl.position.set(MX(126.53), .7 + .75, MZ(33.362)); hl.castShadow = true; scene.add(hl);
+  // 서귀포시 구역: 노란색으로 지정
+  const seoPts = [...sPts, ...bPts];
+  const seo = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(new THREE.Shape(seoPts), { depth:.12, bevelEnabled:false, curveSegments:1 }),
+    new THREE.MeshStandardMaterial({ color:0xfff566, emissive:0x2e2a00, roughness:.7 }));
+  seo.rotation.x = -Math.PI / 2; seo.position.y = .6; seo.receiveShadow = true; scene.add(seo);
+  const line = (list, y, color, op, closed) => { const g = new THREE.BufferGeometry().setFromPoints(list.map(p => new THREE.Vector3(p.x, y, -p.y)));
+    const m = new THREE.LineBasicMaterial({ color, transparent:true, opacity:op }); scene.add(closed ? new THREE.LineLoop(g, m) : new THREE.Line(g, m)); };
+  line(pts, .69, 0xffffff, .3, true);
+  line(bPts, .73, 0xffffff, .9, false);   // 시 경계선
+  line(sPts, .73, 0xffffff, .5, false);
+  // 한라산(백록담 분화구) + 오름
+  const hx = MX(126.53), hz = MZ(33.362);
+  const hl = new THREE.Mesh(new THREE.CylinderGeometry(.5, 2.1, 1.3, 28), new THREE.MeshStandardMaterial({ color:0x2e2e36, roughness:.9, flatShading:true }));
+  hl.position.set(hx, .7 + .65, hz); hl.castShadow = true; scene.add(hl);
+  const crater = new THREE.Mesh(new THREE.CircleGeometry(.36, 24), new THREE.MeshBasicMaterial({ color:0x121216 }));
+  crater.rotation.x = -Math.PI / 2; crater.position.set(hx, 2.01, hz); scene.add(crater);
+  PEAKS.forEach(([lng, lat, h, r]) => {
+    const c = new THREE.Mesh(new THREE.ConeGeometry(r, h, 14), new THREE.MeshStandardMaterial({ color:0x34343c, roughness:.9, flatShading:true }));
+    c.position.set(MX(lng), .7 + h / 2, MZ(lat)); c.castShadow = true; scene.add(c);
+  });
+  const zone = (text, lng, lat, color, w) => { const s = label3D(text, color); s.scale.set(w, w / 4, 1); s.position.set(MX(lng), .95, MZ(lat)); scene.add(s); };
+  zone("서귀포시", 126.62, 33.295, "#111111", 5);
+  zone("제주시", 126.55, 33.47, "rgba(255,255,255,.35)", 4);
   const grid = new THREE.GridHelper(44, 44, 0x44444b, 0x25252a); grid.position.y = -.05; scene.add(grid);
 
   const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -473,17 +501,18 @@ function buildMap(){
   while (M.pinGroup.children.length) { const c = M.pinGroup.children.pop(); c.geometry?.dispose(); c.material?.map?.dispose(); c.material?.dispose(); }
   M.pins = []; M.label = null; M.last = null;
   SPOTS.forEach(sp => {
-    const total = tot[sp.name], on = total != null, k = on ? total / max : 0;
-    const r = on ? .17 + .3 * k : .1, h = on ? 1.1 + 2 * k : .5;
+    // 모든 핀은 같은 크기. 데이터가 있는 곳은 검정 + 퍼지는 링, 없는 곳은 회색
+    const total = tot[sp.name], on = total != null, r = .11, h = .5, base = .72;
     const x = MX(sp.lng), z = MZ(sp.lat);
-    const stem = new THREE.Mesh(new THREE.CylinderGeometry(.025, .025, h, 8), new THREE.MeshStandardMaterial({ color:on ? 0xfff566 : 0x6d6d75 }));
-    stem.position.set(x, .7 + h / 2, z);
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 24), new THREE.MeshStandardMaterial({ color:on ? 0xfff566 : 0x8a8a92, emissive:on ? 0x4a4400 : 0x000000, roughness:.4 }));
-    ball.position.set(x, .7 + h + r, z); ball.userData = { name:sp.name, total, r, h };
+    const col = on ? 0x111111 : 0x7a7a82;
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(.015, .015, h, 8), new THREE.MeshStandardMaterial({ color:col }));
+    stem.position.set(x, base + h / 2, z);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 20), new THREE.MeshStandardMaterial({ color:col, roughness:.35 }));
+    ball.position.set(x, base + h + r, z); ball.userData = { name:sp.name, total, r, h };
     M.pinGroup.add(stem, ball); M.pins.push(ball);
     if (on) {
-      const ring = new THREE.Mesh(new THREE.RingGeometry(r * 1.1, r * 1.35, 40), new THREE.MeshBasicMaterial({ color:0xfff566, transparent:true, opacity:.6, side:THREE.DoubleSide }));
-      ring.rotation.x = -Math.PI / 2; ring.position.set(x, .72, z); M.pinGroup.add(ring); ball.userData.ring = ring;
+      const ring = new THREE.Mesh(new THREE.RingGeometry(.14, .2, 32), new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:.8, side:THREE.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(x, base + .02, z); M.pinGroup.add(ring); ball.userData.ring = ring;
     }
   });
   const list = $("mapList"); list.innerHTML = "";
@@ -500,10 +529,10 @@ function mapFocus(name){
   const p = M.pins.find(p => p.userData.name === name);
   [...$("mapList").querySelectorAll("button")].forEach(b => b.classList.toggle("on", name ? b.dataset.n === name : b.dataset.n === "제주 전체"));
   M.focused = !!p;
-  if (!p) { M.goal = { t:HOME.t.clone(), c:HOME.c.clone() }; return; }
+  if (!p) { M.goal = { t:HOME.t, c:HOME.c }; return; }
   const q = p.position;
   M.goal = { t:new THREE.Vector3(q.x, .8, q.z), c:new THREE.Vector3(q.x + 2.5, 5.5, q.z + 5) };
-  const l = label3D(name, "#fff566"); l.scale.set(4, 1, 1); l.position.set(q.x, q.y + p.userData.r + .7, q.z);
+  const l = label3D(name, "#ffffff", true); l.scale.set(3, .75, 1); l.position.set(q.x, q.y + p.userData.r + .5, q.z);
   M.pinGroup.add(l); M.label = l;
 }
 // 위쪽 버튼으로 관광지를 고르면 지도도 같이 이동
