@@ -275,13 +275,21 @@ function init3D(){
   const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   el.appendChild(renderer.domElement);
-  scene.add(new THREE.AmbientLight(0xffffff, .8));
-  const dl = new THREE.DirectionalLight(0xffffff, .8); dl.position.set(6, 12, 8); scene.add(dl);
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xc9d8e8, .95));
+  const dl = new THREE.DirectionalLight(0xffffff, .85); dl.position.set(8, 16, 10); dl.castShadow = true;
+  dl.shadow.mapSize.set(1024, 1024); Object.assign(dl.shadow.camera, { left:-18, right:18, top:18, bottom:-18, near:1, far:50 });
+  dl.shadow.bias = -.0005; scene.add(dl);
+  const rim = new THREE.PointLight(0xfff566, .8, 40); rim.position.set(-10, 6, -8); scene.add(rim);
+  const pp = [];
+  for (let i = 0; i < 160; i++) { const a = Math.random() * 6.283, r = 7 + Math.random() * 10; pp.push(Math.cos(a) * r, 1 + Math.random() * 11, Math.sin(a) * r); }
+  const pg = new THREE.BufferGeometry(); pg.setAttribute("position", new THREE.Float32BufferAttribute(pp, 3));
+  const parts = new THREE.Points(pg, new THREE.PointsMaterial({ color:0xffffff, size:.09, transparent:true, opacity:.65 })); scene.add(parts);
   const group = new THREE.Group(); scene.add(group);
   const controls = new THREE.OrbitControls(camera, renderer.domElement);
   Object.assign(controls, { enableDamping:true, autoRotate:true, autoRotateSpeed:.8, enablePan:false, minDistance:8, maxDistance:32, maxPolarAngle:Math.PI/2.05 });
   const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(2, 2);
-  T = { scene, camera, renderer, group, controls, ray, mouse, bars:[], mx:0, my:0 };
+  T = { scene, camera, renderer, group, controls, ray, mouse, parts, hov:null, bars:[], mx:0, my:0 };
   renderer.domElement.addEventListener("pointermove", e => {
     const r = renderer.domElement.getBoundingClientRect();
     mouse.set(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
@@ -294,9 +302,16 @@ function init3D(){
   }).observe(el);
   (function loop(){
     requestAnimationFrame(loop);
-    T.bars.forEach(b => { b.scale.y += (b.userData.h - b.scale.y) * .08; });
+    T.bars.forEach(b => {
+      b.scale.y += (b.userData.h - b.scale.y) * .08;
+      b.userData.cap.position.y = b.scale.y;
+      if (b.userData.tag) b.userData.tag.position.y = b.scale.y + 1.1;
+    });
+    T.parts.rotation.y += .0006;
     ray.setFromCamera(mouse, camera);
     const hit = ray.intersectObjects(T.bars)[0], tip = $("tip");
+    if (T.hov && (!hit || T.hov !== hit.object)) { T.hov.material.emissive.setHex(0); T.hov = null; }
+    if (hit) { T.hov = hit.object; T.hov.material.emissive.setHex(0x5a4a00); }
     if (hit) { const u = hit.object.userData; tip.textContent = `${u.site} · ${u.period} · ${fmt(u.v)}명`; tip.style.display = "block"; tip.style.left = (T.mx + 14) + "px"; tip.style.top = (T.my + 14) + "px"; }
     else tip.style.display = "none";
     controls.update(); renderer.render(scene, camera);
@@ -312,16 +327,31 @@ function build3D(){
   while (T.group.children.length) { const c = T.group.children.pop(); c.geometry?.dispose(); c.material?.map?.dispose(); c.material?.dispose(); }
   T.bars = [];
   const gap = 1.1, w = (periods.length - 1) * gap / 2, d = (sites.length - 1) * gap * 1.3 / 2;
-  const geo = new THREE.BoxGeometry(.8, 1, .8); geo.translate(0, .5, 0);
+  const geo = new THREE.CylinderGeometry(.4, .45, 1, 28); geo.translate(0, .5, 0);
+  const pos = geo.attributes.position, col = [];
+  for (let i = 0; i < pos.count; i++) { const g = .8 + .2 * pos.getY(i); col.push(g, g, g); }  // 아래는 어둡게, 위는 밝게
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  const capGeo = new THREE.CylinderGeometry(.48, .48, .08, 28);
+  let peak = null;
   sites.forEach((s, si) => periods.forEach((p, pi) => {
     const v = val[s + "|" + p]; if (v == null) return;
-    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color:0xffffff, roughness:.5 }));
-    m.position.set(pi * gap - w, 0, si * gap * 1.3 - d);
-    m.scale.y = .001; m.userData = { h: Math.max(.05, v / max * 7), site:s, period:p, v };
-    T.group.add(m); T.bars.push(m);
+    const x = pi * gap - w, z = si * gap * 1.3 - d;
+    const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color:0xffffff, vertexColors:true, roughness:.35, metalness:.15 }));
+    m.position.set(x, 0, z); m.castShadow = true; m.scale.y = .001;
+    const cap = new THREE.Mesh(capGeo, new THREE.MeshStandardMaterial({ color:0xffffff, emissive:0xffffff, emissiveIntensity:.35, roughness:.25, metalness:.3 }));
+    cap.position.set(x, 0, z); cap.castShadow = true;
+    m.userData = { h: Math.max(.05, v / max * 7), site:s, period:p, v, cap };
+    T.group.add(m, cap); T.bars.push(m);
+    if (!peak || v > peak.userData.v) peak = m;
   }));
+  if (peak) { const tag = label3D(fmt(peak.userData.v)); tag.position.set(peak.position.x, 1, peak.position.z); peak.userData.tag = tag; T.group.add(tag); }
+  const R = Math.hypot(w, d) + 3;
+  const plate = new THREE.Mesh(new THREE.CylinderGeometry(R, R + .2, .3, 72), new THREE.MeshStandardMaterial({ color:0x0d4a80, roughness:.55, metalness:.25, transparent:true, opacity:.88 }));
+  plate.position.y = -.17; plate.receiveShadow = true; T.group.add(plate);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(R - .12, R + .02, 72), new THREE.MeshBasicMaterial({ color:0xfff566, side:THREE.DoubleSide, transparent:true, opacity:.8 }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = .0; T.group.add(ring);
   const floor = new THREE.GridHelper(Math.max(w, d) * 2 + 4, Math.ceil(Math.max(w, d) * 2 + 4), 0xffffff, 0xffffff);
-  floor.material.opacity = .25; floor.material.transparent = true; T.group.add(floor);
+  floor.position.y = .01; floor.material.opacity = .18; floor.material.transparent = true; T.group.add(floor);
   sites.forEach((s, si) => { const l = label3D(s); l.position.set(-w - 2.4, .4, si * gap * 1.3 - d); T.group.add(l); });
   const step = Math.ceil(periods.length / 6);
   periods.forEach((p, pi) => { if (pi % step) return; const l = label3D(p); l.position.set(pi * gap - w, .4, d + 1.6); T.group.add(l); });
@@ -334,6 +364,8 @@ function recolor3D(){
     const on = all || b.userData.site === curSite;
     b.material.color.set(on ? 0xfff566 : 0xffffff);
     b.material.transparent = !on; b.material.opacity = on ? 1 : .45;
+    const c = b.userData.cap.material; c.transparent = !on; c.opacity = on ? 1 : .45;
+    c.color.set(on ? 0xffffff : 0xdde9f5); c.emissive.set(on ? 0xfff9b0 : 0x000000);
   });
 }
 init3D(); build3D();
